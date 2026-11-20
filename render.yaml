@@ -9,6 +9,12 @@ services:
     dockerfilePath: ./server/Dockerfile
     dockerContext: .
     healthCheckPath: /api/health
+    # Only rebuild the API when server code or dependencies change (frontend commits deploy on Vercel).
+    buildFilter:
+      paths:
+        - server/**
+        - package.json
+        - package-lock.json
     envVars:
       - key: NODE_ENV
         value: production

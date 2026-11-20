@@ -120,5 +120,5 @@ Plans are defined in `server/src/lib/plans.ts`:
 - **Web → Vercel** (project root: `client`). `client/vercel.json` proxies `/api/*` to the Render service so
   cookies stay first-party; video-call sockets connect straight to Render (`VITE_SOCKET_URL` in
   `client/.env.production`) with a short-lived token from `/api/auth/socket-token`, because Vercel can't proxy
-  WebSockets. If the Render URL differs from `streamhub-api.onrender.com`, update both files.
+  WebSockets. If the Render URL differs from `streamhub-api-6azv.onrender.com`, update both files.
 - Free Render services sleep after 15 minutes idle; the first request afterwards takes ~50 s.
