@@ -13,7 +13,37 @@ export class ApiError extends Error {
 
 type Body = Record<string, unknown> | unknown[] | FormData | undefined;
 
+/** Gateway errors while the free-tier API host wakes from sleep (it can take ~50 s). */
+const WAKING = new Set([502, 503, 504]);
+const WAKE_RETRY_DELAYS_MS = [2000, 4000, 6000, 8000, 10_000, 15_000, 15_000, 15_000];
+
+let wakeCount = 0;
+function setWaking(on: boolean) {
+  wakeCount = Math.max(0, wakeCount + (on ? 1 : -1));
+  window.dispatchEvent(new CustomEvent('server:waking', { detail: wakeCount > 0 }));
+}
+
 async function request<T>(method: string, url: string, body?: Body, init?: RequestInit): Promise<T> {
+  // Only safe-to-repeat GETs are retried while the server wakes; writes fail fast as before.
+  if (method !== 'GET') return send<T>(method, url, body, init);
+  let waking = false;
+  try {
+    for (let attempt = 0; ; attempt++) {
+      try {
+        return await send<T>(method, url, body, init);
+      } catch (err) {
+        const retryable = (err instanceof ApiError && WAKING.has(err.status)) || err instanceof TypeError;
+        if (!retryable || attempt >= WAKE_RETRY_DELAYS_MS.length) throw err;
+        if (!waking) setWaking((waking = true));
+        await new Promise((r) => setTimeout(r, WAKE_RETRY_DELAYS_MS[attempt]));
+      }
+    }
+  } finally {
+    if (waking) setWaking(false);
+  }
+}
+
+async function send<T>(method: string, url: string, body?: Body, init?: RequestInit): Promise<T> {
   const isForm = body instanceof FormData;
   const res = await fetch(`/api${url}`, {
     method,

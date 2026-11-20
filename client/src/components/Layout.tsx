@@ -23,6 +23,8 @@ const NAV = [
   { to: '/meet', label: 'Meet', icon: Video },
   { to: '/downloads', label: 'Downloads', icon: Download },
 ];
+/** Visitors only see the public pages; the rest need an account. */
+const GUEST_NAV = NAV.filter((n) => n.to === '/' || n.to === '/plans');
 
 export function Layout() {
   const { user, logout, setTheme } = useAuth();
@@ -30,6 +32,13 @@ export function Layout() {
   const menuRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
   const location = useLocation();
+
+  const [waking, setWaking] = useState(false);
+  useEffect(() => {
+    const onWaking = (e: Event) => setWaking((e as CustomEvent<boolean>).detail);
+    window.addEventListener('server:waking', onWaking);
+    return () => window.removeEventListener('server:waking', onWaking);
+  }, []);
 
   useEffect(() => setOpen(false), [location.pathname]);
   useEffect(() => {
@@ -41,6 +50,7 @@ export function Layout() {
   }, []);
 
   const isDark = document.documentElement.dataset.theme === 'dark';
+  const nav = user ? NAV : GUEST_NAV;
 
   return (
     <>
@@ -50,7 +60,7 @@ export function Layout() {
           StreamHub
         </Link>
         <nav className="nav">
-          {NAV.map(({ to, label, icon: Icon, end }) => (
+          {nav.map(({ to, label, icon: Icon, end }) => (
             <NavLink key={to} to={to} end={end}>
               <Icon size={16} /> {label}
             </NavLink>
@@ -89,7 +99,7 @@ export function Layout() {
                   <button
                     onClick={async () => {
                       await logout();
-                      navigate('/login');
+                      navigate('/');
                     }}
                   >
                     <LogOut size={16} /> Sign out
@@ -101,13 +111,22 @@ export function Layout() {
         ) : (
           <>
             <Link to="/login" className="btn ghost">Sign in</Link>
-            <Link to="/register" className="btn primary">Create account</Link>
+            <Link to="/register" className="btn primary">
+              <span className="hide-narrow">Create account</span>
+              <span className="show-narrow">Sign up</span>
+            </Link>
           </>
         )}
       </header>
+      {waking && (
+        <div className="wake-banner" role="status">
+          <span className="spinner" /> Waking up the server — this can take up to a minute after a quiet period.
+        </div>
+      )}
       <main>
         <Outlet />
       </main>
+      {user && (
       <nav className="mobile-nav">
         {NAV.map(({ to, label, icon: Icon, end }) => (
           <NavLink key={to} to={to} end={end}>
@@ -115,6 +134,7 @@ export function Layout() {
           </NavLink>
         ))}
       </nav>
+      )}
     </>
   );
 }

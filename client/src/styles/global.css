@@ -371,3 +371,29 @@ textarea {
 @media (max-width: 480px) {
   .tabs .tab { flex: 1 1 0; padding: 10px 6px; font-size: 13px; white-space: normal; text-align: center; line-height: 1.2; }
 }
+
+/* Shown while GET requests retry because the free-tier API host is waking up. */
+.wake-banner {
+  position: sticky;
+  top: var(--header-h);
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 8px 16px;
+  font-size: 13.5px;
+  background: var(--info-soft);
+  color: var(--info);
+  border-bottom: 1px solid color-mix(in srgb, var(--info) 25%, transparent);
+}
+.wake-banner .spinner { width: 14px; height: 14px; border-width: 2px; }
+
+/* Narrow phones: shorter header labels so the guest buttons fit. */
+.show-narrow { display: none; }
+@media (max-width: 420px) {
+  .hide-narrow { display: none; }
+  .show-narrow { display: inline; }
+  .app-header { gap: 8px; }
+  .app-header .btn { padding: 0 12px; }
+}
