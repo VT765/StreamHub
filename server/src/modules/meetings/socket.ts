@@ -67,8 +67,12 @@ export function attachMeetingSockets(server: HttpServer) {
 
   io.use(async (socket, next) => {
     try {
-      const token = parseCookies(socket.handshake.headers.cookie)[SESSION_COOKIE];
-      const auth = await authenticateToken(token);
+      // Same-origin dev setups send the session cookie; production sends a short-lived socket token.
+      const socketToken = (socket.handshake.auth as { token?: unknown } | undefined)?.token;
+      const auth =
+        typeof socketToken === 'string'
+          ? await authenticateToken(socketToken, 'socket')
+          : await authenticateToken(parseCookies(socket.handshake.headers.cookie)[SESSION_COOKIE]);
       if (!auth) return next(new Error('UNAUTHENTICATED'));
       (socket.data as SocketData).user = auth.user;
       next();

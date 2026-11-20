@@ -503,7 +503,21 @@ export class MeetingClient {
 
   private ensureSocket() {
     if (this.socket) return this.socket;
-    const socket = io({ path: '/socket.io', withCredentials: true, transports: ['websocket', 'polling'] });
+    // Production: connect straight to the API host (the frontend's proxy can't carry WebSockets),
+    // authenticating with a short-lived token fetched before every (re)connect.
+    const socketUrl = import.meta.env.VITE_SOCKET_URL as string | undefined;
+    const socket = socketUrl
+      ? io(socketUrl, {
+          path: '/socket.io',
+          transports: ['websocket', 'polling'],
+          auth: (cb) => {
+            api
+              .get<{ token: string }>('/auth/socket-token')
+              .then(({ token }) => cb({ token }))
+              .catch(() => cb({}));
+          },
+        })
+      : io({ path: '/socket.io', withCredentials: true, transports: ['websocket', 'polling'] });
     this.socket = socket;
 
     socket.on('connect', () => {

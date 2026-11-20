@@ -1,0 +1,38 @@
+# Render blueprint for the StreamHub API (New → Blueprint → pick this repo).
+# Variables marked `sync: false` are entered in Render's dashboard when the blueprint is created.
+services:
+  - type: web
+    name: streamhub-api
+    runtime: docker
+    plan: free
+    region: singapore
+    dockerfilePath: ./server/Dockerfile
+    dockerContext: .
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: TRUST_PROXY_HOPS
+        value: "2"
+      - key: JWT_SECRET
+        generateValue: true
+      - key: CLIENT_URL
+        sync: false # the Vercel URL, e.g. https://streamhub.vercel.app
+      - key: DATABASE_URL
+        sync: false # MongoDB Atlas connection string (…mongodb.net/streamhub?…)
+      - key: RAZORPAY_KEY_ID
+        sync: false
+      - key: RAZORPAY_KEY_SECRET
+        sync: false
+      - key: SMTP_HOST
+        value: smtp.gmail.com
+      - key: SMTP_PORT
+        value: "465"
+      - key: SMTP_USER
+        sync: false # your Gmail address
+      - key: SMTP_PASS
+        sync: false # Gmail app password (16 characters)
+      - key: MAIL_FROM
+        sync: false # e.g. StreamHub <you@gmail.com>
+      - key: SUPPORT_EMAIL
+        sync: false # where users can reach support

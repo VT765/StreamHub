@@ -7,7 +7,7 @@ import { getClientInfo, type ClientInfo } from '../../lib/clientInfo.js';
 import { asyncHandler, HttpError } from '../../lib/http.js';
 import { prisma } from '../../lib/prisma.js';
 import { smsConfigured } from '../../lib/sms.js';
-import { clearSessionCookie, requireAuth } from '../../middleware/auth.js';
+import { clearSessionCookie, requireAuth, signSocketToken } from '../../middleware/auth.js';
 import {
   assessLoginRisk,
   completeLogin,
@@ -185,6 +185,15 @@ router.get(
   requireAuth,
   asyncHandler(async (req, res) => {
     res.json({ user: publicUser(req.user!) });
+  }),
+);
+
+/** Short-lived token the meeting client uses to open its socket directly to this API host. */
+router.get(
+  '/socket-token',
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    res.json({ token: signSocketToken(req.user!.id, req.sessionId!) });
   }),
 );
 

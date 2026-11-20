@@ -110,3 +110,15 @@ Plans are defined in `server/src/lib/plans.ts`:
 | `npm run setup` | Docker services, push schema, generate media, seed |
 | `npm run db:push -w server` | sync the Prisma schema (collections and indexes) to MongoDB |
 | `npm run db:seed -w server` | (re)seed users and videos |
+
+## Deployment
+
+- **API → Render** (free Docker web service). `render.yaml` is a blueprint: Render → New → Blueprint → this repo.
+  The image installs ffmpeg and generates the sample videos at build time; on start it re-runs the
+  idempotent seed. Fill the `sync: false` variables (Atlas URL, Razorpay test keys, Gmail SMTP app password,
+  `CLIENT_URL`) in Render's dashboard. In Atlas → Network Access, allow `0.0.0.0/0` (Render IPs change).
+- **Web → Vercel** (project root: `client`). `client/vercel.json` proxies `/api/*` to the Render service so
+  cookies stay first-party; video-call sockets connect straight to Render (`VITE_SOCKET_URL` in
+  `client/.env.production`) with a short-lived token from `/api/auth/socket-token`, because Vercel can't proxy
+  WebSockets. If the Render URL differs from `streamhub-api.onrender.com`, update both files.
+- Free Render services sleep after 15 minutes idle; the first request afterwards takes ~50 s.

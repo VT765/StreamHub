@@ -190,6 +190,9 @@ function throttle(bytesPerSec: number) {
   });
 }
 
+/** Largest response for an open-ended byte range, so each request stays short behind proxies. */
+const MAX_RANGE_CHUNK = 4 * 1024 * 1024;
+
 function sendRange(req: Request, res: Response, file: string, contentType: string, bytesPerSec: number | null = null) {
   const pipe = (stream: NodeJS.ReadableStream) => {
     req.on('close', () => (stream as unknown as { destroy(): void }).destroy());
@@ -212,6 +215,8 @@ function sendRange(req: Request, res: Response, file: string, contentType: strin
     start = Math.max(0, size - end);
     end = size - 1;
   }
+  // Open-ended ranges ("bytes=N-") get a bounded chunk; browsers request the next one as they play.
+  if (Number.isNaN(end) && !Number.isNaN(start)) end = start + MAX_RANGE_CHUNK - 1;
   if (Number.isNaN(end) || end >= size) end = size - 1;
   if (!m || Number.isNaN(start) || start > end || start >= size) {
     res.setHeader('Content-Range', `bytes */${size}`);

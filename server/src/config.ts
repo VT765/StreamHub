@@ -10,6 +10,8 @@ export const config = {
   isDev: (process.env.NODE_ENV ?? 'development') !== 'production',
   port: num('PORT', 4000),
   clientUrl: process.env.CLIENT_URL ?? 'http://localhost:5173',
+  // Reverse proxies in front of the API (production: Vercel rewrite + Render load balancer = 2).
+  trustProxyHops: num('TRUST_PROXY_HOPS', 1),
   jwtSecret: process.env.JWT_SECRET ?? 'dev-secret',
   otpTtlMinutes: num('OTP_TTL_MINUTES', 10),
   otpMaxAttempts: num('OTP_MAX_ATTEMPTS', 5),

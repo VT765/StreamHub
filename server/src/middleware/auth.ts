@@ -10,6 +10,16 @@ const SESSION_TTL_DAYS = 30;
 interface TokenPayload {
   sub: string;
   sid: string;
+  /** 'socket' marks a short-lived call-signalling token; absent on session cookies. */
+  typ?: 'socket';
+}
+
+/**
+ * Short-lived token for the video-call socket. In production the browser opens the socket straight
+ * to the API host (the frontend proxy can't carry WebSockets), where the session cookie isn't sent.
+ */
+export function signSocketToken(userId: string, sessionId: string) {
+  return jwt.sign({ sub: userId, sid: sessionId, typ: 'socket' } satisfies TokenPayload, config.jwtSecret, { expiresIn: '2m' });
 }
 
 export function signSessionToken(userId: string, sessionId: string) {
@@ -32,8 +42,8 @@ export function clearSessionCookie(res: Response) {
   res.clearCookie(SESSION_COOKIE, { path: '/' });
 }
 
-/** Verify a raw token (from cookie or socket handshake) and load the live user + session. */
-export async function authenticateToken(token: string | undefined) {
+/** Verify a raw token (session cookie, or a socket token when `kind` is 'socket') and load the live user + session. */
+export async function authenticateToken(token: string | undefined, kind: 'session' | 'socket' = 'session') {
   if (!token) return null;
   let payload: TokenPayload;
   try {
@@ -41,6 +51,8 @@ export async function authenticateToken(token: string | undefined) {
   } catch {
     return null;
   }
+  // A socket token can't be used as a session cookie, and vice versa.
+  if ((payload.typ === 'socket') !== (kind === 'socket')) return null;
   const session = await prisma.session.findUnique({ where: { id: payload.sid }, include: { user: true } });
   if (!session || session.revokedAt || session.userId !== payload.sub) return null;
 

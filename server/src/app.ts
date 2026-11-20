@@ -15,7 +15,7 @@ import { router as videosRouter } from './modules/videos/routes.js';
 
 export function createApp() {
   const app = express();
-  app.set('trust proxy', 1);
+  app.set('trust proxy', config.trustProxyHops);
   app.use(helmet({ crossOriginResourcePolicy: { policy: 'same-site' } }));
   app.use(cors({ origin: config.clientUrl, credentials: true }));
   // Razorpay webhooks need the raw body for signature verification — mount before express.json.
