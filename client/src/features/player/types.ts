@@ -12,6 +12,10 @@ export interface VideoSummary {
   durationSec: number;
   fileSizeBytes: number;
   isPremium: boolean;
+  /** Gold-only exclusive course. */
+  isExclusive: boolean;
+  /** Set while a new release is in Gold early access; null once it's public. */
+  earlyAccessUntil: string | null;
   isDownloadable: boolean;
   views: number;
   createdAt: string;
@@ -21,14 +25,14 @@ export interface VideoSummary {
   progress?: VideoProgress | null;
 }
 
-export type AccessReason = 'PREMIUM_REQUIRED' | 'DAILY_LIMIT' | 'SIGN_IN' | null;
+export type AccessReason = 'PREMIUM_REQUIRED' | 'EXCLUSIVE_REQUIRED' | 'EARLY_ACCESS' | 'DAILY_LIMIT' | 'SIGN_IN' | null;
 
 export interface VideoDetail {
   video: VideoSummary;
   progress: VideoProgress | null;
   access: { allowed: boolean; reason: AccessReason; remainingWatchSeconds: number | null };
   nextVideo: VideoSummary | null;
-  features: { plan: string; adFree: boolean; maxQuality: string; dailyWatchMinutes: number | null };
+  features: { plan: string; adFree: boolean; maxQuality: string; dailyWatchMinutes: number | null; fasterStreaming: boolean };
   completePercent: number;
 }
 

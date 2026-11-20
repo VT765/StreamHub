@@ -1,4 +1,4 @@
-import { CheckCircle2, Crown } from 'lucide-react';
+import { CheckCircle2, Crown, GraduationCap, Sparkles } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { formatDuration, timeAgo } from '../../lib/format';
 import type { VideoSummary } from './types';
@@ -14,10 +14,20 @@ export function VideoCard({ video, compact }: { video: VideoSummary; compact?: b
     <Link to={`/watch/${video.id}`} className={`vcard ${compact ? 'compact' : ''}`}>
       <div className="vcard-thumb">
         <img src={video.thumbnailUrl} alt="" loading="lazy" />
-        {video.isPremium && (
+        {video.isExclusive ? (
           <span className="badge plan-GOLD vcard-premium">
-            <Crown size={12} /> Premium
+            <GraduationCap size={12} /> Gold course
           </span>
+        ) : video.earlyAccessUntil ? (
+          <span className="badge plan-GOLD vcard-premium">
+            <Sparkles size={12} /> Early access
+          </span>
+        ) : (
+          video.isPremium && (
+            <span className="badge plan-GOLD vcard-premium">
+              <Crown size={12} /> Premium
+            </span>
+          )
         )}
         <span className="vcard-duration">{formatDuration(video.durationSec)}</span>
         {p?.completed ? (

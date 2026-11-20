@@ -2,6 +2,7 @@ import { Clock, Moon, Sun } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
 import { useAuth } from '../auth/AuthContext';
 import { Avatar } from '../components/Avatar';
+import { ProfileDownloads } from '../features/downloads/ProfileDownloads';
 import { api, errorMessage } from '../lib/api';
 import { formatDate } from '../lib/format';
 import type { User } from '../lib/types';
@@ -51,6 +52,8 @@ export function ProfilePage() {
           </div>
         </div>
       </div>
+
+      <ProfileDownloads />
 
       <section className="card stack">
         <h2>Appearance</h2>

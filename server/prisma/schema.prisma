@@ -3,7 +3,7 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "mongodb"
   url      = env("DATABASE_URL")
 }
 
@@ -27,7 +27,7 @@ enum PlanTier {
 }
 
 model User {
-  id               String    @id @default(cuid())
+  id               String    @id @default(auto()) @map("_id") @db.ObjectId
   email            String    @unique
   username         String    @unique
   name             String
@@ -43,6 +43,8 @@ model User {
   country          String?
   plan             PlanTier  @default(FREE)
   planExpiresAt    DateTime?
+  // Bumped inside download transactions so concurrent ones for the same user conflict and retry.
+  downloadLockSeq  Int       @default(0)
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 
@@ -68,10 +70,10 @@ model User {
 }
 
 model Session {
-  id              String         @id @default(cuid())
-  userId          String
+  id              String         @id @default(auto()) @map("_id") @db.ObjectId
+  userId          String         @db.ObjectId
   user            User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  trustedDeviceId String?
+  trustedDeviceId String?        @db.ObjectId
   trustedDevice   TrustedDevice? @relation(fields: [trustedDeviceId], references: [id], onDelete: SetNull)
   ip              String?
   browser         String?
@@ -95,8 +97,8 @@ enum LoginStatus {
 }
 
 model LoginEvent {
-  id             String      @id @default(cuid())
-  userId         String?
+  id             String      @id @default(auto()) @map("_id") @db.ObjectId
+  userId         String?     @db.ObjectId
   user           User?       @relation(fields: [userId], references: [id], onDelete: Cascade)
   email          String
   status         LoginStatus
@@ -125,8 +127,8 @@ enum OtpChannel {
 }
 
 model OtpChallenge {
-  id         String     @id @default(cuid())
-  userId     String
+  id         String     @id @default(auto()) @map("_id") @db.ObjectId
+  userId     String     @db.ObjectId
   user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
   codeHash   String
   channel    OtpChannel
@@ -141,8 +143,8 @@ model OtpChallenge {
 }
 
 model TrustedDevice {
-  id           String    @id @default(cuid())
-  userId       String
+  id           String    @id @default(auto()) @map("_id") @db.ObjectId
+  userId       String    @db.ObjectId
   user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   // Stable per-browser id (cookie) + hashed browser/os/deviceType.
   deviceKey    String
@@ -169,7 +171,7 @@ model TrustedDevice {
 // ───────────────────────────── Videos & watching ─────────────────────────────
 
 model Video {
-  id            String   @id @default(cuid())
+  id            String   @id @default(cuid()) @map("_id")
   title         String
   description   String   @default("")
   // Paths relative to server/media (served via /api/media) or absolute URLs.
@@ -179,6 +181,10 @@ model Video {
   durationSec   Int      @default(0)
   fileSizeBytes BigInt   @default(0)
   isPremium     Boolean  @default(false)
+  // Exclusive premium course: only plans with exclusiveCourses (Gold) can watch/download it.
+  isExclusive   Boolean  @default(false)
+  // New release: until this moment only plans with priorityAccess (Gold) can watch/download it.
+  earlyAccessUntil DateTime?
   isDownloadable Boolean @default(true)
   channelName   String   @default("StreamHub")
   views         Int      @default(0)
@@ -190,7 +196,8 @@ model Video {
 }
 
 model WatchProgress {
-  userId      String
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId      String   @db.ObjectId
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   videoId     String
   video       Video    @relation(fields: [videoId], references: [id], onDelete: Cascade)
@@ -199,17 +206,18 @@ model WatchProgress {
   completed   Boolean  @default(false)
   updatedAt   DateTime @updatedAt
 
-  @@id([userId, videoId])
+  @@unique([userId, videoId])
 }
 
 // Per-day usage counters (IST date string YYYY-MM-DD) for watch-time limits.
 model DailyUsage {
-  userId       String
-  user         User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id           String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId       String   @db.ObjectId
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   date         String
-  watchSeconds Int    @default(0)
+  watchSeconds Int      @default(0)
 
-  @@id([userId, date])
+  @@unique([userId, date])
 }
 
 // ───────────────────────────── Subscriptions & payments ─────────────────────────────
@@ -228,8 +236,8 @@ enum SubscriptionStatus {
 }
 
 model Subscription {
-  id          String             @id @default(cuid())
-  userId      String
+  id          String             @id @default(auto()) @map("_id") @db.ObjectId
+  userId      String             @db.ObjectId
   user        User               @relation(fields: [userId], references: [id], onDelete: Cascade)
   plan        PlanTier
   period      BillingPeriod
@@ -260,10 +268,10 @@ enum PaymentAction {
 }
 
 model Payment {
-  id                String        @id @default(cuid())
-  userId            String
+  id                String        @id @default(auto()) @map("_id") @db.ObjectId
+  userId            String        @db.ObjectId
   user              User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  subscriptionId    String?
+  subscriptionId    String?       @db.ObjectId
   subscription      Subscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
   plan              PlanTier
   period            BillingPeriod
@@ -272,9 +280,9 @@ model Payment {
   currency          String        @default("INR")
   status            PaymentStatus @default(CREATED)
   razorpayOrderId   String        @unique
-  razorpayPaymentId String?       @unique
+  razorpayPaymentId String? // unique when set: partial index in scripts/mongo-indexes.ts
   razorpaySignature String?
-  invoiceNumber     String?       @unique
+  invoiceNumber     String? // unique when set: partial index in scripts/mongo-indexes.ts
   failureReason     String?
   emailSentAt       DateTime?
   createdAt         DateTime      @default(now())
@@ -294,8 +302,8 @@ enum DownloadStatus {
 }
 
 model Download {
-  id              String         @id @default(cuid())
-  userId          String
+  id              String         @id @default(auto()) @map("_id") @db.ObjectId
+  userId          String         @db.ObjectId
   user            User           @relation(fields: [userId], references: [id], onDelete: Cascade)
   videoId         String
   video           Video          @relation(fields: [videoId], references: [id], onDelete: Cascade)
@@ -353,13 +361,13 @@ enum ReportStatus {
 }
 
 model Comment {
-  id           String        @id @default(cuid())
+  id           String        @id @default(auto()) @map("_id") @db.ObjectId
   videoId      String
   video        Video         @relation(fields: [videoId], references: [id], onDelete: Cascade)
-  userId       String
+  userId       String        @db.ObjectId
   user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  parentId     String?
-  parent       Comment?      @relation("Replies", fields: [parentId], references: [id], onDelete: SetNull)
+  parentId     String?       @db.ObjectId
+  parent       Comment?      @relation("Replies", fields: [parentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   replies      Comment[]     @relation("Replies")
   content      String
   language     String?
@@ -387,19 +395,20 @@ model Comment {
 }
 
 model CommentReaction {
-  userId    String
+  id        String       @id @default(auto()) @map("_id") @db.ObjectId
+  userId    String       @db.ObjectId
   user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  commentId String
+  commentId String       @db.ObjectId
   comment   Comment      @relation(fields: [commentId], references: [id], onDelete: Cascade)
   type      ReactionType
   createdAt DateTime     @default(now())
 
-  @@id([userId, commentId])
+  @@unique([userId, commentId])
 }
 
 model CommentEdit {
-  id              String   @id @default(cuid())
-  commentId       String
+  id              String   @id @default(auto()) @map("_id") @db.ObjectId
+  commentId       String   @db.ObjectId
   comment         Comment  @relation(fields: [commentId], references: [id], onDelete: Cascade)
   previousContent String
   version         Int
@@ -407,19 +416,20 @@ model CommentEdit {
 }
 
 model CommentMention {
-  commentId String
-  comment   Comment @relation(fields: [commentId], references: [id], onDelete: Cascade)
-  userId    String
-  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  commentId String   @db.ObjectId
+  comment   Comment  @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  userId    String   @db.ObjectId
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@id([commentId, userId])
+  @@unique([commentId, userId])
 }
 
 model CommentReport {
-  id         String       @id @default(cuid())
-  commentId  String
+  id         String       @id @default(auto()) @map("_id") @db.ObjectId
+  commentId  String       @db.ObjectId
   comment    Comment      @relation(fields: [commentId], references: [id], onDelete: Cascade)
-  reporterId String
+  reporterId String       @db.ObjectId
   reporter   User         @relation(fields: [reporterId], references: [id], onDelete: Cascade)
   reason     ReportReason
   details    String?
@@ -431,21 +441,22 @@ model CommentReport {
 }
 
 model CommentTranslation {
-  commentId  String
+  id         String   @id @default(auto()) @map("_id") @db.ObjectId
+  commentId  String   @db.ObjectId
   comment    Comment  @relation(fields: [commentId], references: [id], onDelete: Cascade)
   targetLang String
   text       String
   sourceLang String?
   createdAt  DateTime @default(now())
 
-  @@id([commentId, targetLang])
+  @@unique([commentId, targetLang])
 }
 
 model ModerationAction {
-  id          String   @id @default(cuid())
-  commentId   String
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  commentId   String   @db.ObjectId
   comment     Comment  @relation(fields: [commentId], references: [id], onDelete: Cascade)
-  moderatorId String
+  moderatorId String   @db.ObjectId
   moderator   User     @relation(fields: [moderatorId], references: [id], onDelete: Cascade)
   action      String // HIDE | RESTORE | DISMISS_REPORTS
   note        String?
@@ -454,8 +465,8 @@ model ModerationAction {
 
 // Every post attempt, accepted or blocked — drives rate limiting, CAPTCHA and the audit log.
 model CommentAttempt {
-  id          String   @id @default(cuid())
-  userId      String
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId      String   @db.ObjectId
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   accepted    Boolean
   blockReason String? // PROFANITY | SPAM | DUPLICATE | REPEATED_CHARS | MALICIOUS_LINK | RATE_LIMIT | CAPTCHA
@@ -475,10 +486,10 @@ enum MeetingRole {
 }
 
 model Meeting {
-  id              String    @id @default(cuid())
+  id              String    @id @default(auto()) @map("_id") @db.ObjectId
   roomCode        String    @unique
   title           String
-  hostId          String
+  hostId          String    @db.ObjectId
   host            User      @relation(fields: [hostId], references: [id], onDelete: Cascade)
   passcodeHash    String?
   isLocked        Boolean   @default(false)
@@ -495,10 +506,10 @@ model Meeting {
 }
 
 model MeetingParticipant {
-  id         String      @id @default(cuid())
-  meetingId  String
+  id         String      @id @default(auto()) @map("_id") @db.ObjectId
+  meetingId  String      @db.ObjectId
   meeting    Meeting     @relation(fields: [meetingId], references: [id], onDelete: Cascade)
-  userId     String
+  userId     String      @db.ObjectId
   user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
   role       MeetingRole @default(PARTICIPANT)
   canScreenShare Boolean?  // null = follow meeting default
@@ -511,10 +522,10 @@ model MeetingParticipant {
 }
 
 model MeetingChatMessage {
-  id        String   @id @default(cuid())
-  meetingId String
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  meetingId String   @db.ObjectId
   meeting   Meeting  @relation(fields: [meetingId], references: [id], onDelete: Cascade)
-  userId    String
+  userId    String   @db.ObjectId
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   kind      String   @default("text") // text | file
   content   String
@@ -527,10 +538,10 @@ model MeetingChatMessage {
 }
 
 model MeetingRecording {
-  id          String   @id @default(cuid())
-  meetingId   String
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  meetingId   String   @db.ObjectId
   meeting     Meeting  @relation(fields: [meetingId], references: [id], onDelete: Cascade)
-  hostId      String
+  hostId      String   @db.ObjectId
   host        User     @relation(fields: [hostId], references: [id], onDelete: Cascade)
   filePath    String
   sizeBytes   Int

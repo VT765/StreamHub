@@ -6,7 +6,7 @@ A video streaming platform with a custom HTML5 player, tiered subscriptions (Raz
 | --- | --- |
 | Client | React 18, Vite, TypeScript, React Router |
 | Server | Node 22, Express, TypeScript, Socket.IO |
-| Data | PostgreSQL 16 via Prisma |
+| Data | MongoDB 7 (replica set) via Prisma |
 | Payments | Razorpay (test mode) |
 | Email | Nodemailer (Mailpit in dev) |
 | Calls | WebRTC mesh, Socket.IO signaling |
@@ -18,9 +18,13 @@ Prerequisites: Node 22+, Docker, ffmpeg (`brew install ffmpeg`).
 ```bash
 npm install
 cp server/.env.example server/.env   # then set JWT_SECRET and Razorpay test keys
-npm run setup                        # starts Postgres + Mailpit, migrates, generates sample videos, seeds
+npm run setup                        # starts MongoDB + Mailpit, pushes the schema, generates sample videos, seeds
 npm run dev                          # API on :4000, web app on http://localhost:5173
 ```
+
+To use MongoDB Atlas instead of the local container, put your Atlas connection string in `DATABASE_URL`
+and run `npm run db:push -w server && npm run media:fetch -w server && npm run db:seed -w server`.
+MongoDB must be a replica set (Atlas always is), because Prisma needs one for transactions.
 
 Seeded accounts (password `Password@123`):
 
@@ -103,6 +107,6 @@ Plans are defined in `server/src/lib/plans.ts`:
 | `npm run dev` | API + web app with reload |
 | `npm run typecheck` | typecheck both workspaces |
 | `npm run build` | production build |
-| `npm run setup` | Docker services, migrate, generate media, seed |
-| `npm run db:migrate -w server` | apply/create Prisma migrations |
+| `npm run setup` | Docker services, push schema, generate media, seed |
+| `npm run db:push -w server` | sync the Prisma schema (collections and indexes) to MongoDB |
 | `npm run db:seed -w server` | (re)seed users and videos |

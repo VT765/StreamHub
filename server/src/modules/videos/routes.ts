@@ -1,12 +1,13 @@
 import type { Request, Response } from 'express';
 import { Router } from 'express';
 import { createReadStream, existsSync, statSync } from 'node:fs';
+import { Transform } from 'node:stream';
 import path from 'node:path';
 import type { User, Video } from '@prisma/client';
 import { z } from 'zod';
 import { asyncHandler, HttpError } from '../../lib/http.js';
 import { MEDIA_DIR } from '../../lib/paths.js';
-import { planFeatures } from '../../lib/plans.js';
+import { contentBlock, effectivePlan, planFeatures, type ContentBlock } from '../../lib/plans.js';
 import { prisma } from '../../lib/prisma.js';
 import { istDateKey } from '../../lib/time.js';
 import { optionalAuth, requireAuth } from '../../middleware/auth.js';
@@ -19,7 +20,7 @@ export const COMPLETE_PERCENT = 90;
 /** Max watch seconds credited per progress call (client saves every ~10s). */
 const MAX_DELTA_PER_CALL = 30;
 
-type AccessReason = 'PREMIUM_REQUIRED' | 'DAILY_LIMIT' | 'SIGN_IN' | null;
+type AccessReason = ContentBlock | 'DAILY_LIMIT' | 'SIGN_IN' | null;
 
 interface Access {
   allowed: boolean;
@@ -38,9 +39,11 @@ async function remainingWatchSeconds(user: User): Promise<number | null> {
 }
 
 async function computeAccess(user: User | undefined, video: Video): Promise<Access> {
-  if (video.isPremium) {
+  const gated = video.isPremium || video.isExclusive || (!!video.earlyAccessUntil && video.earlyAccessUntil > new Date());
+  if (gated) {
     if (!user) return { allowed: false, reason: 'SIGN_IN', remainingWatchSeconds: null };
-    if (!planFeatures(user).premiumVideos) return { allowed: false, reason: 'PREMIUM_REQUIRED', remainingWatchSeconds: null };
+    const block = contentBlock(effectivePlan(user), video);
+    if (block) return { allowed: false, reason: block, remainingWatchSeconds: null };
   }
   if (!user) return { allowed: true, reason: null, remainingWatchSeconds: null };
   const remaining = await remainingWatchSeconds(user);
@@ -65,6 +68,8 @@ function serializeVideo(v: Video) {
     durationSec: v.durationSec,
     fileSizeBytes: v.fileSizeBytes,
     isPremium: v.isPremium,
+    isExclusive: v.isExclusive,
+    earlyAccessUntil: v.earlyAccessUntil && v.earlyAccessUntil > new Date() ? v.earlyAccessUntil : null,
     isDownloadable: v.isDownloadable,
     views: v.views,
     createdAt: v.createdAt,
@@ -154,13 +159,42 @@ router.get(
         adFree: features.adFree,
         maxQuality: features.maxQuality,
         dailyWatchMinutes: features.dailyWatchMinutes,
+        fasterStreaming: features.fasterStreaming,
       },
       completePercent: COMPLETE_PERCENT,
     });
   }),
 );
 
-function sendRange(req: Request, res: Response, file: string, contentType: string) {
+/**
+ * Delivery rate for plans without fasterStreaming: 1.5× the video's own average bitrate (never below
+ * 256 KB/s). Playback always keeps up; buffering ahead and seeking are just slower than on priority.
+ */
+function standardStreamRate(video: Video, fileSize: number) {
+  const avgBytesPerSec = video.durationSec > 0 ? fileSize / video.durationSec : 0;
+  return Math.max(256 * 1024, Math.ceil(avgBytesPerSec * 1.5));
+}
+
+/** Paces a stream to `bytesPerSec` (token bucket, 100 ms ticks). */
+function throttle(bytesPerSec: number) {
+  const started = Date.now();
+  let sent = 0;
+  return new Transform({
+    transform(chunk: Buffer, _enc, done) {
+      sent += chunk.length;
+      const due = started + (sent / bytesPerSec) * 1000;
+      const wait = due - Date.now();
+      if (wait > 0) setTimeout(() => done(null, chunk), wait);
+      else done(null, chunk);
+    },
+  });
+}
+
+function sendRange(req: Request, res: Response, file: string, contentType: string, bytesPerSec: number | null = null) {
+  const pipe = (stream: NodeJS.ReadableStream) => {
+    req.on('close', () => (stream as unknown as { destroy(): void }).destroy());
+    (bytesPerSec ? stream.pipe(throttle(bytesPerSec)) : stream).pipe(res);
+  };
   const { size } = statSync(file);
   res.setHeader('Accept-Ranges', 'bytes');
   res.setHeader('Content-Type', contentType);
@@ -168,7 +202,7 @@ function sendRange(req: Request, res: Response, file: string, contentType: strin
   const range = req.headers.range;
   if (!range) {
     res.setHeader('Content-Length', size);
-    return createReadStream(file).pipe(res);
+    return pipe(createReadStream(file));
   }
   const m = /^bytes=(\d*)-(\d*)$/.exec(range);
   let start = m && m[1] ? Number(m[1]) : NaN;
@@ -186,9 +220,7 @@ function sendRange(req: Request, res: Response, file: string, contentType: strin
   res.status(206);
   res.setHeader('Content-Range', `bytes ${start}-${end}/${size}`);
   res.setHeader('Content-Length', end - start + 1);
-  const stream = createReadStream(file, { start, end });
-  req.on('close', () => stream.destroy());
-  stream.pipe(res);
+  pipe(createReadStream(file, { start, end }));
 }
 
 router.get(
@@ -203,7 +235,10 @@ router.get(
     if (/^https?:\/\//.test(video.videoPath)) return res.redirect(video.videoPath);
     const file = mediaFile(video.videoPath);
     if (!file) throw new HttpError(404, 'Video file missing', 'NOT_FOUND');
-    sendRange(req, res, file, 'video/mp4');
+    // Faster streaming (Silver/Gold) is unthrottled; everyone else gets the standard delivery rate.
+    const fast = !!req.user && planFeatures(req.user).fasterStreaming;
+    res.setHeader('X-Stream-Tier', fast ? 'priority' : 'standard');
+    sendRange(req, res, file, 'video/mp4', fast ? null : standardStreamRate(video, statSync(file).size));
   }),
 );
 

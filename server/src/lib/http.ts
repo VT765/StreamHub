@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 import type { NextFunction, Request, RequestHandler, Response } from 'express';
 import { ZodError, type ZodTypeAny, type z } from 'zod';
 
@@ -28,6 +29,10 @@ export function errorHandler(err: unknown, _req: Request, res: Response, _next: 
   }
   if (err instanceof HttpError) {
     return res.status(err.status).json({ error: err.message, code: err.code, details: err.details });
+  }
+  // MongoDB: an id that isn't a valid ObjectId can't match anything — treat it like a missing record.
+  if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2023' && /ObjectID/i.test(err.message)) {
+    return res.status(404).json({ error: 'Not found', code: 'NOT_FOUND' });
   }
   console.error(err);
   res.status(500).json({ error: 'Something went wrong', code: 'INTERNAL' });

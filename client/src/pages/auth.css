@@ -106,3 +106,9 @@
     height: 48px;
   }
 }
+
+.security-stats { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
+@media (max-width: 480px) {
+  .security-stats { grid-template-columns: 1fr 1fr; gap: 10px; }
+  .security-stats .card { padding: 12px 14px; }
+}

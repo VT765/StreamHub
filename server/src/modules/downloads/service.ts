@@ -1,9 +1,9 @@
-import type { Download, PlanTier, Prisma, User, Video } from '@prisma/client';
+import type { Download, PlanTier, User, Video } from '@prisma/client';
 import { randomBytes } from 'node:crypto';
 import { config } from '../../config.js';
 import { HttpError } from '../../lib/http.js';
-import { PLANS, effectivePlan } from '../../lib/plans.js';
-import { prisma } from '../../lib/prisma.js';
+import { PLANS, contentBlock, effectivePlan, type ContentBlock } from '../../lib/plans.js';
+import { prisma, transactionWithRetry, type Tx } from '../../lib/prisma.js';
 import { istDateKey, istMonthKey, nextIstMidnight } from '../../lib/time.js';
 
 /*
@@ -17,20 +17,19 @@ import { istDateKey, istMonthKey, nextIstMidnight } from '../../lib/time.js';
  *   within the duplicate window.
  * - Retrying a refunded attempt charges quota again (otherwise failed attempts would be an
  *   unlimited free-download loophole).
- * - Quota check + insert run under a per-user Postgres advisory lock, so simultaneous requests from
- *   several devices can't overshoot the limit.
+ * - Quota check + insert run in a transaction that first writes the user's downloadLockSeq. MongoDB
+ *   lets only one concurrent transaction write a document; the others abort with a write conflict
+ *   and are retried, so simultaneous requests from several devices can't overshoot the limit.
  */
 
 export const TOKEN_TTL_MS = 5 * 60_000;
 const REUSE_WINDOW_MS = 2 * 60_000;
 
-type Tx = Prisma.TransactionClient;
-
 export function newToken() {
   return randomBytes(32).toString('base64url');
 }
 
-export async function getQuota(user: Pick<User, 'id' | 'plan' | 'planExpiresAt'>, db: Tx | typeof prisma = prisma) {
+export async function getQuota(user: Pick<User, 'id' | 'plan' | 'planExpiresAt'>, db: Tx = prisma) {
   const plan = effectivePlan(user);
   const features = PLANS[plan];
   const today = istDateKey();
@@ -56,6 +55,12 @@ export async function getQuota(user: Pick<User, 'id' | 'plan' | 'planExpiresAt'>
 export type Quota = Awaited<ReturnType<typeof getQuota>>;
 
 /** Checks that don't depend on quota: plan includes downloads, video access, registered device. */
+const BLOCK_MESSAGES: Record<ContentBlock, string> = {
+  EXCLUSIVE_REQUIRED: 'Exclusive premium courses are part of the Gold plan',
+  EARLY_ACCESS: 'This new release is in early access for Gold members',
+  PREMIUM_REQUIRED: 'Premium videos need a paid plan',
+};
+
 export async function assertCanDownload(user: User, video: Video | null, deviceKey: string | null) {
   if (!video) throw new HttpError(404, 'Video not found', 'NOT_FOUND');
   if (!video.isDownloadable) throw new HttpError(403, 'This video can’t be downloaded', 'NOT_DOWNLOADABLE');
@@ -63,12 +68,10 @@ export async function assertCanDownload(user: User, video: Video | null, deviceK
   const plan = effectivePlan(user);
   const expired = user.plan !== 'FREE' && plan === 'FREE';
   if (!PLANS[plan].offlineDownloads) throw new HttpError(403, 'Your plan doesn’t include downloads', 'PREMIUM_REQUIRED');
-  if (video.isPremium && !PLANS[plan].premiumVideos) {
-    throw new HttpError(
-      403,
-      expired ? 'Your subscription has expired. Renew to download premium videos.' : 'Premium videos need a paid plan',
-      expired ? 'PLAN_EXPIRED' : 'PREMIUM_REQUIRED',
-    );
+  const block = contentBlock(plan, video);
+  if (block) {
+    if (expired) throw new HttpError(403, 'Your subscription has expired. Renew to download this video.', 'PLAN_EXPIRED');
+    throw new HttpError(403, BLOCK_MESSAGES[block], block);
   }
 
   if (config.downloads.requireRegisteredDevice) {
@@ -81,8 +84,9 @@ export async function assertCanDownload(user: User, video: Video | null, deviceK
   }
 }
 
+/** Per-user mutex: concurrent transactions that both write this user document conflict, one retries. */
 function lockUser(tx: Tx, userId: string) {
-  return tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${'downloads:' + userId}))`;
+  return tx.user.update({ where: { id: userId }, data: { downloadLockSeq: { increment: 1 } }, select: { id: true } });
 }
 
 async function chargedRecently(tx: Tx, userId: string, videoId: string, excludeId?: string) {
@@ -116,7 +120,7 @@ export interface RequestMeta {
 
 /** Authorize a new download (or hand back the one just authorized, for double clicks / refreshes). */
 export async function authorizeDownload(user: User, video: Video, meta: RequestMeta) {
-  return prisma.$transaction(async (tx) => {
+  return transactionWithRetry(async (tx) => {
     await lockUser(tx, user.id);
 
     const recent = await tx.download.findFirst({
@@ -162,7 +166,7 @@ export async function retryDownload(user: User, original: Download & { video: Vi
   }
   await assertCanDownload(user, original.video, meta.deviceKey);
 
-  return prisma.$transaction(async (tx) => {
+  return transactionWithRetry(async (tx) => {
     await lockUser(tx, user.id);
     let charge = false;
     if (!original.countsToQuota) {
@@ -192,9 +196,8 @@ export function assertPlanStillValid(user: User, download: Download, video: Vide
   if (download.plan !== 'FREE' && plan === 'FREE') {
     throw new HttpError(403, 'Your subscription expired after this download was authorized', 'PLAN_EXPIRED');
   }
-  if (video.isPremium && !PLANS[plan].premiumVideos) {
-    throw new HttpError(403, 'Premium videos need a paid plan', 'PREMIUM_REQUIRED');
-  }
+  const block = contentBlock(plan, video);
+  if (block) throw new HttpError(403, BLOCK_MESSAGES[block], block);
 }
 
 /** Downloads currently streaming in this process — lets the sweeper tell "stalled" from "active". */

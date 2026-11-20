@@ -1,20 +1,20 @@
 # Local dev services. Run: docker compose up -d
 services:
-  postgres:
-    image: postgres:16-alpine
-    environment:
-      POSTGRES_USER: streamhub
-      POSTGRES_PASSWORD: streamhub
-      POSTGRES_DB: streamhub
+  # Single-node replica set: Prisma needs a replica set for MongoDB transactions.
+  mongo:
+    image: mongo:7
+    command: ["--replSet", "rs0", "--bind_ip_all", "--port", "27017"]
     ports:
-      - "5433:5432"
+      - "27017:27017"
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - mongodata:/data/db
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U streamhub"]
+      # Initiates the replica set on first start; afterwards just reports it healthy.
+      test: ["CMD", "mongosh", "--quiet", "--eval", "try { rs.status().ok } catch (e) { rs.initiate({ _id: 'rs0', members: [{ _id: 0, host: 'localhost:27017' }] }).ok }"]
       interval: 5s
-      timeout: 3s
-      retries: 10
+      timeout: 10s
+      start_period: 10s
+      retries: 20
 
   # Catches all outgoing email (OTP, invoices). Web UI: http://localhost:8025
   mailpit:
@@ -24,4 +24,4 @@ services:
       - "8025:8025"
 
 volumes:
-  pgdata:
+  mongodata:

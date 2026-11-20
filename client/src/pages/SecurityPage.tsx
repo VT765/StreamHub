@@ -117,7 +117,7 @@ export function SecurityPage() {
       </div>
       {error && <div className="alert error">{error}</div>}
 
-      <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))' }}>
+      <div className="grid security-stats">
         <div className="card"><div className="subtle">Sign-ins (30 days)</div><div style={{ fontSize: 26, fontWeight: 700 }}>{(summary.SUCCESS ?? 0) + (summary.OTP_VERIFIED ?? 0)}</div></div>
         <div className="card"><div className="subtle">Failed attempts (30 days)</div><div style={{ fontSize: 26, fontWeight: 700, color: failed ? 'var(--danger)' : undefined }}>{failed}</div></div>
         <div className="card"><div className="subtle">Trusted devices</div><div style={{ fontSize: 26, fontWeight: 700 }}>{devices.length}</div></div>

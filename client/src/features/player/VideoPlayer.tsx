@@ -68,6 +68,8 @@ export interface VideoPlayerProps {
   onToggleTheater: () => void;
   /** Highest quality the user's plan allows, e.g. "720p". */
   planMaxQuality?: string;
+  /** Plan includes priority (unthrottled) streaming. */
+  fasterStreaming?: boolean;
   completePercent?: number;
   /** Signed-in users get progress saved. */
   trackProgress: boolean;
@@ -94,6 +96,7 @@ export function VideoPlayer({
   theater,
   onToggleTheater,
   planMaxQuality,
+  fasterStreaming,
   completePercent = 90,
   trackProgress,
   remainingWatchSeconds = null,
@@ -831,6 +834,11 @@ export function VideoPlayer({
                 {planMaxQuality && (
                   <div className="vp-menu-item static subtle-row">
                     Plan maximum <span className="spacer" /> {planMaxQuality}
+                  </div>
+                )}
+                {fasterStreaming !== undefined && (
+                  <div className="vp-menu-item static subtle-row">
+                    Streaming <span className="spacer" /> {fasterStreaming ? 'Priority (faster)' : 'Standard'}
                   </div>
                 )}
                 <label className="vp-menu-item">

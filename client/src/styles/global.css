@@ -366,3 +366,8 @@ textarea {
   .mobile-nav a.active { color: var(--accent); }
   .container { padding-bottom: 96px; }
 }
+
+/* Phones: tab strips share the width instead of running off-screen. */
+@media (max-width: 480px) {
+  .tabs .tab { flex: 1 1 0; padding: 10px 6px; font-size: 13px; white-space: normal; text-align: center; line-height: 1.2; }
+}

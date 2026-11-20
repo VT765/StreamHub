@@ -6,7 +6,7 @@ import { formatBytes, formatDateTime, formatDuration } from '../../lib/format';
 import { ERROR_COPY, downloadsApi, startBrowserDownload, type DownloadItem, type DownloadStatus, type Quota } from './api';
 import './downloads.css';
 
-const STATUS: Record<DownloadStatus, { label: string; cls: string }> = {
+export const STATUS: Record<DownloadStatus, { label: string; cls: string }> = {
   AUTHORIZED: { label: 'Starting', cls: 'info' },
   IN_PROGRESS: { label: 'Downloading', cls: 'info' },
   COMPLETED: { label: 'Completed', cls: 'success' },

@@ -35,3 +35,7 @@
   .dl-item { grid-template-columns: 112px 1fr; }
   .dl-actions { grid-column: 1 / -1; flex-direction: row; justify-content: flex-end; }
 }
+
+/* Compact list inside the profile card (no actions column, no row padding). */
+.profile-dl-item { grid-template-columns: 120px 1fr; padding: 10px 0; }
+@media (max-width: 640px) { .profile-dl-item { grid-template-columns: 96px 1fr; } }

@@ -21,6 +21,12 @@ export const config = {
     pass: process.env.SMTP_PASS || undefined,
     from: process.env.MAIL_FROM ?? 'StreamHub <no-reply@streamhub.local>',
   },
+  // Optional: Twilio (free trial works for verified numbers). Without it, codes go by email only.
+  sms: {
+    accountSid: process.env.TWILIO_ACCOUNT_SID || '',
+    authToken: process.env.TWILIO_AUTH_TOKEN || '',
+    from: process.env.TWILIO_FROM_NUMBER || '',
+  },
   supportEmail: process.env.SUPPORT_EMAIL ?? 'support@streamhub.local',
   razorpay: {
     keyId: process.env.RAZORPAY_KEY_ID ?? '',

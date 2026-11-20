@@ -1,10 +1,9 @@
-import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 import { existsSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { CATALOG } from '../scripts/catalog.js';
+import { prisma } from '../src/lib/prisma.js';
 
-const prisma = new PrismaClient();
 const MEDIA = path.resolve(import.meta.dirname, '../media');
 
 async function main() {
@@ -32,9 +31,19 @@ async function main() {
       durationSec: v.durationSec,
       fileSizeBytes: existsSync(abs) ? BigInt(statSync(abs).size) : 0n,
       isPremium: v.isPremium,
+      isExclusive: v.isExclusive ?? false,
       channelName: v.channelName,
     };
-    await prisma.video.upsert({ where: { id: v.slug }, update: data, create: { id: v.slug, ...data } });
+    // Early-access window starts at first seed; re-seeding keeps an existing window instead of extending it.
+    const existing = await prisma.video.findUnique({ where: { id: v.slug }, select: { earlyAccessUntil: true } });
+    const earlyAccessUntil = v.earlyAccessDays
+      ? (existing?.earlyAccessUntil ?? new Date(Date.now() + v.earlyAccessDays * 24 * 60 * 60 * 1000))
+      : null;
+    await prisma.video.upsert({
+      where: { id: v.slug },
+      update: { ...data, earlyAccessUntil },
+      create: { id: v.slug, ...data, earlyAccessUntil },
+    });
   }
   console.log(`Seeded ${CATALOG.length} videos. Logins: admin@streamhub.local / demo@streamhub.local — password Password@123`);
 }

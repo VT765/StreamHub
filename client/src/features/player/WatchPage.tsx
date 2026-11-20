@@ -1,4 +1,4 @@
-import { Clock, Crown, Lock, LogIn, X } from 'lucide-react';
+import { Clock, Crown, GraduationCap, Lock, LogIn, Sparkles, X } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../../auth/AuthContext';
@@ -112,6 +112,7 @@ export function WatchPage() {
             theater={theater}
             onToggleTheater={toggleTheater}
             planMaxQuality={data.features.maxQuality}
+            fasterStreaming={data.features.fasterStreaming}
             completePercent={data.completePercent}
             trackProgress={!!user}
             remainingWatchSeconds={data.access.remainingWatchSeconds}
@@ -184,7 +185,7 @@ function AccessGate({ reason, video, dailyMinutes }: { reason: AccessReason; vid
     SIGN_IN: {
       icon: <LogIn size={32} />,
       title: 'Sign in to watch',
-      body: 'This is a premium video. Sign in with a paid plan to watch it.',
+      body: 'This video is for subscribers. Sign in with a plan that includes it to watch.',
       cta: <Link to="/login" state={{ from: `/watch/${video.id}` }} className="btn primary">Sign in</Link>,
     },
     PREMIUM_REQUIRED: {
@@ -192,6 +193,20 @@ function AccessGate({ reason, video, dailyMinutes }: { reason: AccessReason; vid
       title: 'Premium video',
       body: 'Upgrade to Bronze, Silver or Gold to unlock premium videos.',
       cta: <Link to="/plans" className="btn primary"><Crown size={16} /> View plans</Link>,
+    },
+    EXCLUSIVE_REQUIRED: {
+      icon: <GraduationCap size={32} />,
+      title: 'Gold-exclusive course',
+      body: 'Exclusive premium courses are included with the Gold plan.',
+      cta: <Link to="/plans" className="btn primary"><Crown size={16} /> Upgrade to Gold</Link>,
+    },
+    EARLY_ACCESS: {
+      icon: <Sparkles size={32} />,
+      title: 'Early access for Gold members',
+      body: `This new release is available to Gold members first${
+        video.earlyAccessUntil ? `, and to everyone with a paid plan from ${formatDate(video.earlyAccessUntil)}` : ''
+      }.`,
+      cta: <Link to="/plans" className="btn primary"><Crown size={16} /> Upgrade to Gold</Link>,
     },
     DAILY_LIMIT: {
       icon: <Clock size={32} />,

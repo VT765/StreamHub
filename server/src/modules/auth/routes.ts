@@ -6,6 +6,7 @@ import { config } from '../../config.js';
 import { getClientInfo, type ClientInfo } from '../../lib/clientInfo.js';
 import { asyncHandler, HttpError } from '../../lib/http.js';
 import { prisma } from '../../lib/prisma.js';
+import { smsConfigured } from '../../lib/sms.js';
 import { clearSessionCookie, requireAuth } from '../../middleware/auth.js';
 import {
   assessLoginRisk,
@@ -109,7 +110,7 @@ router.post(
       challengeId: challenge.id,
       channel: challenge.channel,
       destination: maskDestination(user, 'EMAIL'),
-      smsAvailable: !!user.phone,
+      smsAvailable: !!user.phone && smsConfigured(),
       reasons,
       expiresAt: challenge.expiresAt,
     });
@@ -170,6 +171,7 @@ router.post(
       .parse(req.body);
     const challenge = await loadOpenChallenge(challengeId);
     if (channel === 'SMS' && !challenge.user.phone) throw new HttpError(400, 'No mobile number on this account');
+    if (channel === 'SMS' && !smsConfigured()) throw new HttpError(400, 'SMS codes aren’t available. Use the code sent to your email.', 'SMS_UNAVAILABLE');
     if (Date.now() - challenge.createdAt.getTime() < 30_000 && challenge.channel === channel && challenge.attempts === 0) {
       throw new HttpError(429, 'Please wait a few seconds before requesting another code', 'OTP_COOLDOWN');
     }

@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { config } from '../../config.js';
 import { getClientIp } from '../../lib/clientInfo.js';
 import { asyncHandler, HttpError } from '../../lib/http.js';
-import { prisma } from '../../lib/prisma.js';
+import { prisma, transactionWithRetry } from '../../lib/prisma.js';
 import { optionalAuth, requireAdmin, requireAuth } from '../../middleware/auth.js';
 import { createCaptcha, markSolved, recentlySolved, verifyCaptcha } from './captcha.js';
 import {
@@ -334,7 +334,7 @@ router.patch(
     }
 
     const mentionIds = await resolveMentions(content);
-    await prisma.$transaction(async (tx) => {
+    await transactionWithRetry(async (tx) => {
       // Compare-and-swap on version so two simultaneous edits can't both win.
       const { count } = await tx.comment.updateMany({
         where: { id: comment.id, version },
@@ -412,7 +412,7 @@ router.post(
     const commentId = req.params.id;
 
     const run = () =>
-      prisma.$transaction(async (tx) => {
+      transactionWithRetry(async (tx) => {
         const comment = await tx.comment.findUnique({ where: { id: commentId }, select: { status: true } });
         if (!comment || comment.status === 'DELETED' || comment.status === 'HIDDEN') {
           throw new HttpError(404, 'Comment not found', 'NOT_FOUND');

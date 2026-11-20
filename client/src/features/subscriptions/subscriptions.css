@@ -309,3 +309,10 @@
   font-size: 12px;
   word-break: break-all;
 }
+
+/* Phones: three equal segments with the savings badge under the label, so nothing is cut off. */
+@media (max-width: 480px) {
+  .sub-period-toggle { display: grid; grid-template-columns: repeat(3, 1fr); width: 100%; border-radius: 16px; }
+  .sub-period-toggle button { flex-direction: column; gap: 2px; padding: 8px 4px; border-radius: 12px; font-size: 13px; }
+  .sub-period-toggle .badge { font-size: 10px; padding: 1px 6px; }
+}

@@ -66,6 +66,8 @@ export const ERROR_COPY: Record<string, { title: string; upgrade?: boolean }> = 
   MONTHLY_LIMIT: { title: 'Monthly download limit reached', upgrade: true },
   PLAN_EXPIRED: { title: 'Your subscription has expired', upgrade: true },
   PREMIUM_REQUIRED: { title: 'Premium video', upgrade: true },
+  EXCLUSIVE_REQUIRED: { title: 'Gold-exclusive course', upgrade: true },
+  EARLY_ACCESS: { title: 'Gold early access', upgrade: true },
   DEVICE_NOT_REGISTERED: { title: 'Device not registered' },
   NOT_DOWNLOADABLE: { title: 'Download unavailable' },
   RETRY_EXPIRED: { title: 'Retry window passed' },

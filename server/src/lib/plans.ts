@@ -59,6 +59,25 @@ export function effectivePlan(user: Pick<User, 'plan' | 'planExpiresAt'>): PlanT
   return user.plan;
 }
 
+export type ContentBlock = 'EXCLUSIVE_REQUIRED' | 'EARLY_ACCESS' | 'PREMIUM_REQUIRED';
+
+/**
+ * Plan-based content rules shared by watching, streaming and downloads:
+ * exclusive courses need exclusiveCourses, early-access releases need priorityAccess until they go
+ * public, and premium videos need premiumVideos.
+ */
+export function contentBlock(
+  plan: PlanTier,
+  video: { isPremium: boolean; isExclusive: boolean; earlyAccessUntil: Date | null },
+  now = new Date(),
+): ContentBlock | null {
+  const f = PLANS[plan];
+  if (video.isExclusive && !f.exclusiveCourses) return 'EXCLUSIVE_REQUIRED';
+  if (video.earlyAccessUntil && video.earlyAccessUntil > now && !f.priorityAccess) return 'EARLY_ACCESS';
+  if (video.isPremium && !f.premiumVideos) return 'PREMIUM_REQUIRED';
+  return null;
+}
+
 export function planFeatures(user: Pick<User, 'plan' | 'planExpiresAt'>): PlanFeatures {
   return PLANS[effectivePlan(user)];
 }

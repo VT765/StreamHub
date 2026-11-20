@@ -1,4 +1,4 @@
-import type { BillingPeriod, Payment, PaymentAction, PlanTier, Prisma, Subscription, User } from '@prisma/client';
+import type { BillingPeriod, Payment, PaymentAction, PlanTier, Subscription, User } from '@prisma/client';
 import { Prisma as PrismaNS } from '@prisma/client';
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import Razorpay from 'razorpay';
@@ -6,7 +6,7 @@ import { config } from '../../config.js';
 import { HttpError } from '../../lib/http.js';
 import { emailLayout, sendMail } from '../../lib/mailer.js';
 import { effectivePlan, PERIOD_DAYS, PLANS } from '../../lib/plans.js';
-import { prisma } from '../../lib/prisma.js';
+import { prisma, type Tx } from '../../lib/prisma.js';
 import { invoicePdf } from './invoice.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -56,7 +56,7 @@ export function webhookSignatureValid(rawBody: Buffer, signature: string) {
 // ───────────── Current state ─────────────
 
 /** The subscription the user is on right now (active or cancelled-but-not-yet-expired). */
-export function currentSubscription(userId: string, db: Prisma.TransactionClient = prisma) {
+export function currentSubscription(userId: string, db: Tx = prisma) {
   const now = new Date();
   return db.subscription.findFirst({
     where: { userId, status: { in: ['ACTIVE', 'CANCELLED'] }, startDate: { lte: now }, expiryDate: { gt: now } },
@@ -65,7 +65,7 @@ export function currentSubscription(userId: string, db: Prisma.TransactionClient
 }
 
 /** A paid downgrade waiting for the current plan to run out. */
-export function scheduledSubscription(userId: string, db: Prisma.TransactionClient = prisma) {
+export function scheduledSubscription(userId: string, db: Tx = prisma) {
   return db.subscription.findFirst({
     where: { userId, status: { in: ['ACTIVE', 'CANCELLED'] }, startDate: { gt: new Date() } },
     orderBy: { startDate: 'asc' },
@@ -231,7 +231,7 @@ export async function activatePayment(orderId: string, paymentId: string, signat
       return result;
     } catch (err) {
       // Two activations in the same instant can race for an invoice number; retry.
-      if (err instanceof PrismaNS.PrismaClientKnownRequestError && err.code === 'P2002' && attempt < 3) continue;
+      if (err instanceof PrismaNS.PrismaClientKnownRequestError && (err.code === 'P2002' || err.code === 'P2034') && attempt < 3) continue;
       throw err;
     }
   }

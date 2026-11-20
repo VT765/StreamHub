@@ -3,7 +3,9 @@ import type { LoginStatus, OtpChannel, User } from '@prisma/client';
 import { createHmac, randomInt, timingSafeEqual } from 'node:crypto';
 import { config } from '../../config.js';
 import type { ClientInfo } from '../../lib/clientInfo.js';
+import { HttpError } from '../../lib/http.js';
 import { emailLayout, sendMail } from '../../lib/mailer.js';
+import { sendSms, smsConfigured } from '../../lib/sms.js';
 import { prisma } from '../../lib/prisma.js';
 import { themeForLoginTime } from '../../lib/time.js';
 import { setSessionCookie, signSessionToken } from '../../middleware/auth.js';
@@ -119,7 +121,11 @@ export async function issueOtp(user: User, channel: OtpChannel, info: ClientInfo
 /** Re-send: new code on the same challenge, attempts reset. */
 export async function reissueOtp(challengeId: string, user: User, channel: OtpChannel) {
   const code = String(randomInt(0, 1_000_000)).padStart(6, '0');
-  const challenge = await prisma.otpChallenge.update({
+  const existing = await prisma.otpChallenge.findUniqueOrThrow({ where: { id: challengeId }, select: { context: true } });
+  const ctx = existing.context as unknown as ClientInfo & { reasons: RiskReason[] };
+  // Deliver first: if sending fails (e.g. SMS), the code the user already has keeps working.
+  await deliverOtp(user, channel, code, ctx, ctx.reasons ?? []);
+  return prisma.otpChallenge.update({
     where: { id: challengeId },
     data: {
       channel,
@@ -128,9 +134,6 @@ export async function reissueOtp(challengeId: string, user: User, channel: OtpCh
       expiresAt: new Date(Date.now() + config.otpTtlMinutes * 60_000),
     },
   });
-  const ctx = challenge.context as unknown as ClientInfo & { reasons: RiskReason[] };
-  await deliverOtp(user, channel, code, ctx, ctx.reasons ?? []);
-  return challenge;
 }
 
 const REASON_TEXT: Record<RiskReason, string> = {
@@ -145,8 +148,14 @@ async function deliverOtp(user: User, channel: OtpChannel, code: string, info: C
   const why = reasons.map((r) => REASON_TEXT[r]).join(', ') || 'a new sign-in';
 
   if (channel === 'SMS') {
-    // No SMS provider is wired up; plug one in here (e.g. Twilio, MSG91). In dev the code is logged.
-    console.log(`[otp:sms] ${user.phone} → ${code}`);
+    if (config.isDev) console.log(`[otp:sms] ${user.phone} → ${code}`);
+    if (!smsConfigured() || !user.phone) throw new HttpError(400, 'SMS codes aren’t available. Use the code sent to your email.', 'SMS_UNAVAILABLE');
+    try {
+      await sendSms(user.phone, `${code} is your StreamHub verification code. It expires in ${config.otpTtlMinutes} minutes.`);
+    } catch (err) {
+      console.error('[otp:sms]', err);
+      throw new HttpError(502, 'We couldn’t send the SMS. Try again, or use the code sent to your email.', 'SMS_FAILED');
+    }
     return;
   }
   if (config.isDev) console.log(`[otp:email] ${user.email} → ${code}`);
